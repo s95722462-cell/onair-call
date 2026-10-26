@@ -101,11 +101,12 @@ const txt = async (p, sel) => { try { return (await p.textContent(sel, { timeout
     await g1.click("[data-a=go]");
     ok("손님1 '확인했어요' → 직원 목록 '확인'", await waitFor(async () => (await txt(staff, `[data-row="${n1}"]`)).includes("확인")));
     await staff.click(`[data-a=in][data-n="${n1}"]`);
-    ok("입장 처리 → 손님1 '입장했어요'", await waitFor(async () => (await txt(g1, "#gTitle")).includes("입장"), 70000));
-    const n2 = parseInt(await txt(g2, "#gNum"), 10);
-    await staff.click(`[data-a=qcall][data-n="${n2}"]`); await sleep(500);
+    const n2 = parseInt(await txt(g2, "#gNum"), 10), nMsg0 = relay.msgs.length;
+    await sleep(1500); ok("입장은 따로 방송 안 함 (다음 방송에 묻어 감)", relay.msgs.length === nMsg0);
+    await staff.click(`[data-a=qcall][data-n="${n2}"]`);
+    ok("다음 호출 방송에 묻어 → 손님1 '입장했어요'", await waitFor(async () => (await txt(g1, "#gTitle")).includes("입장")));
+    await sleep(500);
     await staff.click(`[data-a=no][data-n="${n2}"]`);
-    ok("노쇼 처리 → 손님2 '순서가 지나갔어요'", await waitFor(async () => (await txt(g2, "#gTitle")).includes("지나갔"), 30000));
     await staff.click("[data-a=walk]"); await staff.click('#walkDlg [data-p="4"]'); await staff.click('#walkDlg [data-w="ok"]');
     ok("직접 등록 → 번호 표시", /\d+/.test(await txt(staff, "#walkDlg .walkbig"))); await staff.click('#walkDlg [data-w="no"]');
 
@@ -116,6 +117,7 @@ const txt = async (p, sel) => { try { return (await p.textContent(sel, { timeout
     await staff.click("#callBtn");
     const r77 = await waitFor(async () => g3.evaluate(() => document.body.classList.contains("ring")));
     ok("번호 77 호출 → 손님3 알림", r77, r77 ? "" : `직원 ${await txt(staff, "#curNum")} / 손님 ${(await txt(g3, "#gp")).slice(0, 80)} / 중계 마지막 ${relay.msgs.slice(-1).map(m => m.message.slice(0, 120))}`);
+    ok("노쇼 처리 → (77 호출 방송에 묻어) 손님2 '순서가 지나갔어요'", await waitFor(async () => (await txt(g2, "#gTitle")).includes("지나갔")));
     await g3.click("[data-a=ack]");
     ok("손님3 '확인했어요' → 직원 알림·번호판 ✓", await waitFor(async () => (await txt(staff, "#toast")).includes("77") || (await board.evaluate(() => [...document.querySelectorAll("#bRecent .ack")].map(x => x.textContent).join(","))).includes("77"), 10000));
     await sleep(2500);
@@ -200,6 +202,19 @@ const txt = async (p, sel) => { try { return (await p.textContent(sel, { timeout
     ok("입구 화면: 지금 호출 · 대기 N팀", /\d/.test(await txt(dr, "#dNum")) && (await txt(dr, "#dWait")).includes("대기"));
     ok("입구 화면 1280x800 넘침 없음", (await overflow(dr)) <= 0);
     await sleep(3800); await dr.screenshot({ path: path.join(SHOTS, "door_1280x800.png") });
+    // QR 가운데 가게 이름 + 다시 읽기 (OpenCV)
+    const qrDir = path.join(SHOTS, "qr"); fs.mkdirSync(qrDir, { recursive: true });
+    const saveImg = async (pg, sel, name) => { const d = await pg.getAttribute(sel, "src"); const f = path.join(qrDir, name); fs.writeFileSync(f, Buffer.from(d.split(",")[1], "base64")); return f; };
+    await dr.locator("#dQr").screenshot({ path: path.join(SHOTS, "qr_center.png") });
+    const fDoor = await saveImg(dr, "#dQr img", "door.png");
+    const fBoard = await saveImg(board, "#bQr img", "board.png");
+    await staff.click("[data-a=pair]"); await waitFor(async () => !!(await staff.$("#pairQr img")));
+    const fPair = await saveImg(staff, "#pairQr img", "pair.png"); await staff.click('#pairDlg [data-t="close"]');
+    let dec = {}; try { dec = JSON.parse(require("child_process").execFileSync("python", ["-I", path.join(__dirname, "qr_decode.py"), fDoor, fBoard, fPair], { encoding: "utf8" })); } catch (e) { dec = { err: e.message }; }
+    const want = `${BASE}?s=${SHOP}&q&t=${TODAY2}`;
+    ok("입구 화면 QR (가게 이름 넣음) 다시 읽기 = 원래 주소", dec[fDoor] === want, dec[fDoor] || JSON.stringify(dec).slice(0, 100));
+    ok("번호판 QR 다시 읽기 = 원래 주소", dec[fBoard] === want, dec[fBoard]);
+    ok("기기 연결 QR 다시 읽기 = 원래 주소", dec[fPair] === `${BASE}?s=${SHOP}&door#pair=${KEY2}`, (dec[fPair] || "").replace(KEY2, "<열쇠>"));
     await dr.setViewportSize({ width: 800, height: 1280 }); await sleep(500);
     ok("입구 화면 800x1280 넘침 없음", (await overflow(dr)) <= 0);
     ok("입구 화면 세로: 대기·안내가 화면 안에", await dr.evaluate(() => ["dWait", "dQr"].every(id => document.getElementById(id).getBoundingClientRect().bottom <= innerHeight) && document.querySelector(".dr-safe").getBoundingClientRect().bottom <= innerHeight));

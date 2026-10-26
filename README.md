@@ -28,3 +28,7 @@
 
 ## 시험
 `node tests/e2e.js` (가짜 중계) · `node tests/e2e.js --real` (실제 ntfy.sh 2건 추가)
+· `node tests/count.js` (한 팀당 중계 건수 세기, 가짜 중계) · QR 다시 읽기는 파이썬 OpenCV(`tests/qr_decode.py`) 사용
+
+## 중계 아껴 쓰기
+호출은 바로, 대기 등록 번호는 4초 모아서, 입장·노쇼·취소·직접 등록은 따로 안 보내고 다음 방송에 묻어 감. 손님 '확인했어요'는 다시 방송 안 함.

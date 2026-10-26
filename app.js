@@ -10,6 +10,11 @@ const DEFAULT_RELAY = "https://ntfy.sh/";    // 나중에 유료·자체 ntfy �
 const SUPPORT = "";                          // 구독 연장 문의 연락처 (예: "010-0000-0000") — 비워 두면 안 보임
 const GRACE_DAYS = 7;                        // 만료 뒤 유예 기간
 const DAILY_LIMIT = 250;                     // ntfy.sh 무료 중계 하루 대략 한도 (보내는 IP마다)
+/* 아껴 보내기 (가게 → 손님 상태 방송):
+   · 호출 = 바로 (손님 휴대폰이 울려야 하므로)            · 대기 등록 번호 = 4초 모아서 한 번 (같이 등록한 손님끼리 나눔)
+   · 입장·노쇼·취소·직접 등록 = 따로 안 보냄, 다음 등록·호출 방송에 묻어 감 (손님 '앞에 N팀'은 호출 때 바로 바뀜)
+   · 손님 '확인했어요'를 받아도 다시 방송하지 않음 · 같은 PC 번호판 창은 localStorage 로만 */
+const REG_DELAY = 4000;
 
 // ================= 도우미 =================
 const $ = id => document.getElementById(id);
@@ -174,7 +179,22 @@ let S = {};          // 직원 기기 설정 (언어·목소리·반복·차임)
 function guestUrl(t) { return location.origin + location.pathname + "?s=" + CODE + "&q" + (t ? "&t=" + t : ""); }
 function qrImg(text, size) {
   return new Promise(res => {
-    const go = () => { try { const box = document.createElement("div"); new window.QRCode(box, { text, width: size, height: size, correctLevel: window.QRCode.CorrectLevel.M }); res(box.querySelector("canvas")?.toDataURL() || box.querySelector("img")?.src || ""); } catch (e) { res(""); } };
+    const go = () => {
+      try {                                                // 오류 정정 H(30%) + 가운데 흰 둥근 상자에 가게 이름 (QR 면적의 약 7%) + 둘레 흰 여백
+        const box = document.createElement("div"); new window.QRCode(box, { text, width: size, height: size, correctLevel: window.QRCode.CorrectLevel.H });
+        const src = box.querySelector("canvas"); if (!src) return res(box.querySelector("img")?.src || "");
+        const m = Math.round(size * 0.06), c = document.createElement("canvas"); c.width = c.height = size + m * 2;
+        const g = c.getContext("2d"); g.fillStyle = "#fff"; g.fillRect(0, 0, c.width, c.height); g.imageSmoothingEnabled = false; g.drawImage(src, m, m);
+        const name = String(SHOP.name.length > 5 ? (SHOP.logoText || SHOP.name.slice(0, 4)) : SHOP.name);
+        const bw = size * 0.36, bh = size * 0.17, x = (c.width - bw) / 2, y = (c.height - bh) / 2, r = bh * 0.28;
+        g.fillStyle = "#fff"; g.beginPath(); g.moveTo(x + r, y); g.arcTo(x + bw, y, x + bw, y + bh, r); g.arcTo(x + bw, y + bh, x, y + bh, r); g.arcTo(x, y + bh, x, y, r); g.arcTo(x, y, x + bw, y, r); g.closePath(); g.fill();
+        g.lineWidth = Math.max(2, size * 0.008); g.strokeStyle = SHOP.color; g.stroke();
+        let fs = bh * 0.62; g.font = `900 ${fs}px "Malgun Gothic","Apple SD Gothic Neo",sans-serif`;
+        while (g.measureText(name).width > bw * 0.84 && fs > 8) { fs -= 1; g.font = `900 ${fs}px "Malgun Gothic","Apple SD Gothic Neo",sans-serif`; }
+        g.fillStyle = SHOP.color; g.textAlign = "center"; g.textBaseline = "middle"; g.fillText(name, c.width / 2, c.height / 2 + fs * 0.05);
+        res(c.toDataURL("image/png"));
+      } catch (e) { res(""); }
+    };
     if (window.QRCode) go(); else { let n = 0; const iv = setInterval(() => { if (window.QRCode || ++n > 50) { clearInterval(iv); window.QRCode ? go() : res(""); } }, 100); }
   });
 }
@@ -207,9 +227,9 @@ function snapObj() {
 }
 function qSave() { ls.set("queue", Q); boardLocal(); render(); }
 function boardLocal() { try { const s = JSON.parse(snapObj()); s.t = Date.now(); ls.set("board", s); } catch (e) {} }
-function pub(delay = 300) {                             // 스냅숏 보내기 (모아서 한 번 · 최소 2초 간격 · 같은 내용이면 안 보냄)
+function pub(delay = 300, gap = 2000) {                 // 스냅숏 보내기 (모아서 한 번 · 최소 간격 · 같은 내용이면 안 보냄)
   if (!leader) return;
-  const due = Math.max(Date.now() + delay, lastSend + 2000);
+  const due = Math.max(Date.now() + delay, lastSend + gap);
   if (pubT && pubDue <= due) return;
   clearTimeout(pubT); pubDue = due; pubT = setTimeout(send, due - Date.now());
 }
@@ -245,21 +265,21 @@ function onIn(d) {
   if (p[0] === "J") {
     const party = Math.min(6, Math.max(1, parseInt(p[2], 10) || 1)), mine = Q.list.filter(e => e.d === dev);
     if (!Q.on || !canCall() || t * 1000 < (Q.openAt || 0) - 3000) { ls.set("queue", Q); return; }
-    if (mine.some(isAct)) { if (Date.now() - (Q.pubAt || 0) > 60000) Q.pub = ""; ls.set("queue", Q); pub(); return; }   // 이미 번호 있음 → 다시 알려 줌
+    if (mine.some(isAct)) { if (Date.now() - (Q.pubAt || 0) > 60000) Q.pub = ""; ls.set("queue", Q); pub(REG_DELAY); return; }   // 이미 번호 있음 → 다시 알려 줌
     if (mine.some(e => t * 1000 <= (e.doneAt || 0) + 1000)) { ls.set("queue", Q); return; }
     if (Q.list.filter(isAct).length >= 200) { ls.set("queue", Q); return; }
     ls.set("queue", Q);
     tokenOk(p[5] || "").then(good => {                  // 오늘의 QR 코드 검사 — 틀리면 거절 응답 (그 휴대폰만 알아봄)
-      if (!good) { Q.rj = [{ k: dev.slice(0, 6) + ":" + String(p[3] || "").replace(/[^a-z0-9]/g, "").slice(0, 6), at: Date.now() }, ...(Q.rj || [])].slice(0, 10); ls.set("queue", Q); pub(1500); return; }
+      if (!good) { Q.rj = [{ k: dev.slice(0, 6) + ":" + String(p[3] || "").replace(/[^a-z0-9]/g, "").slice(0, 6), at: Date.now() }, ...(Q.rj || [])].slice(0, 10); ls.set("queue", Q); pub(REG_DELAY); return; }
       if (Q.list.some(e => e.d === dev && isAct(e))) return;
       const n = Q.next++; Q.list.push({ n, d: dev, p: party, at: t ? Math.min(Date.now(), t * 1000) : Date.now(), st: "w", calls: 0 });
-      qSave(); pub(); toast(`🧾 ${n}번 대기 등록 · ${ppl(party)}`);
+      qSave(); pub(REG_DELAY); toast(`🧾 ${n}번 대기 등록 · ${ppl(party)}`);
     });
   } else if (p[0] === "G" || p[0] === "X") {
     const n = parseInt(p[2], 10), e = Q.list.find(x => x.n === n && x.d === dev);
     if (!e || p[3] !== Q.r) { ls.set("queue", Q); return; }
     if (p[0] === "G" && "cn".includes(e.st)) { e.st = "g"; ackAdd(n); qSave(); toast(`✅ ${n}번 손님이 확인했어요 — 오는 중`); if (calling && Q.cur === n) stopCall(); }
-    else if (p[0] === "X" && "wcgn".includes(e.st)) { e.st = "x"; e.doneAt = Date.now(); e.self = 1; qSave(); pub(20000); toast(`${n}번 손님이 대기를 취소했어요`); }
+    else if (p[0] === "X" && "wcgn".includes(e.st)) { e.st = "x"; e.doneAt = Date.now(); e.self = 1; qSave(); /* 따로 안 보냄 — 다음 방송에 묻어 감 */ toast(`${n}번 손님이 대기를 취소했어요`); }
     else ls.set("queue", Q);
   } else if (p[0] === "A") {                            // 번호로 기다리던 손님의 '확인했어요'
     const n = parseInt(p[2], 10); if (!(n > 0)) { ls.set("queue", Q); return; }
@@ -275,7 +295,7 @@ function callNumber(n, again) {                         // 📢 호출: 매장 �
   const now = Date.now(), e = Q.list.find(x => x.n === n && "wcgn".includes(x.st));
   if (e) { e.st = "c"; e.calls = (e.calls || 0) + 1; if (!e.c1) e.c1 = now; e.ct = now; delete e.doneAt; }
   Q.cur = n; Q.ck = S.kind; Q.ct = now; Q.h = [n, ...(Q.h || []).filter(x => x !== n)].slice(0, 12); Q.ack = (Q.ack || []).filter(x => x !== n);
-  S.num = n; saveS(); qSave(); pub(); announce(n, S.kind);
+  S.num = n; saveS(); qSave(); pub(0, 1000); announce(n, S.kind);   // 호출은 바로
 }
 async function announce(n, kind) {
   stopSpeak(); const id = speakId, msg = SHOP.messages[kind] || Object.values(SHOP.messages)[0];
@@ -294,6 +314,10 @@ async function announce(n, kind) {
 }
 function stopCall() { stopSpeak(); calling = false; render(); }
 function saveS() { ls.set("set", S); }
+function teamsLeft(sent) {                               // 오늘 한 팀당 보낸 건수(5팀 넘으면 실제 평균, 아니면 2건)로 남은 팀 수 추정
+  const teams = Q.list.length, per = teams >= 5 && sent ? Math.max(0.5, sent / teams) : 2;
+  return Math.max(0, Math.floor((DAILY_LIMIT - sent) / per));
+}
 let TOK4 = "", tokDay = "";
 async function tokRefresh() { const t = await todayToken(); const v = t ? t.slice(0, 4) : ""; tokDay = kstDate(nowMs()); if (v !== TOK4) { TOK4 = v; render(); } }
 
@@ -356,9 +380,9 @@ function onStaffClick(e) {
   else if (a === "reset") { if (!leader || !confirm("오늘 대기를 모두 지우고 1번부터 다시 시작할까요?")) return; Object.assign(Q, { r: rnd(4), day: today(), next: 1, cur: 0, list: [], h: [], ack: [] }); qSave(); pub(); toast("대기를 초기화했습니다 — 다음 등록은 1번"); }
   else if (!leader || !ent) return;
   else if (a === "qcall") { padFresh = true; callNumber(ent.n); }
-  else if (a === "in") { ent.st = "i"; ent.doneAt = Date.now(); qSave(); pub(60000); }
-  else if (a === "no") { ent.st = "n"; ent.doneAt = Date.now(); qSave(); pub(20000); toast(`${ent.n}번 노쇼 처리 — 목록 아래 '지난 손님'에 있어요`); }
-  else if (a === "del") { if (!confirm(`${ent.n}번 대기를 취소할까요?`)) return; ent.st = "x"; ent.doneAt = Date.now(); qSave(); pub(20000); }
+  else if (a === "in") { ent.st = "i"; ent.doneAt = Date.now(); qSave(); /* 따로 안 보냄 — 다음 방송에 묻어 감 */ }
+  else if (a === "no") { ent.st = "n"; ent.doneAt = Date.now(); qSave(); /* 따로 안 보냄 — 다음 방송에 묻어 감 */ toast(`${ent.n}번 노쇼 처리 — 목록 아래 '지난 손님'에 있어요`); }
+  else if (a === "del") { if (!confirm(`${ent.n}번 대기를 취소할까요?`)) return; ent.st = "x"; ent.doneAt = Date.now(); qSave(); /* 따로 안 보냄 — 다음 방송에 묻어 감 */ }
 }
 function rowHTML(e) {
   const now = Date.now(), min = Math.max(0, Math.round(((e.c1 || (isAct(e) ? now : e.doneAt || now)) - e.at) / 60000));
@@ -392,7 +416,7 @@ function render() {
         ${leader ? `<button class="qnext" data-a="next"${w.length && canCall() ? "" : " disabled"}>📢 다음 손님${w.length ? ` <b>${w[0].n}번</b>` : ""}</button><div class="qtools"><button data-a="walk"${canCall() ? "" : " disabled"}>＋ 직접 등록 (휴대폰 없는 손님)</button></div>` : ""}
         <div class="qlist" id="qList">${act.length ? act.map(rowHTML).join("") : `<div class="qempty">기다리는 손님이 없습니다</div>`}</div>
         ${done.length ? `<details class="done"${doneOpen ? " open" : ""}><summary>지난 손님 ${done.length}팀</summary><div class="qlist">${done.map(rowHTML).join("")}</div></details>` : ""}
-        <div class="qfoot"><span>오늘 ${Q.list.length}팀 · 휴대폰 알림 ${sent}/${DAILY_LIMIT}건${sent >= 200 ? " ⚠️" : ""}${TOK4 ? ` · <span id="tok4" title="오늘의 QR 코드 앞 4자리 (현장 확인용)">오늘 QR ${esc(TOK4)}</span>` : ""}</span>${leader && Q.list.length ? `<button data-a="reset">오늘 대기 초기화</button>` : ""}</div>
+        <div class="qfoot"><span>오늘 ${Q.list.length}팀 · 휴대폰 알림 ${sent}/${DAILY_LIMIT}건${sent >= 200 ? " ⚠️" : ""} · <span id="teamsLeft">남은 약 ${teamsLeft(sent)}팀</span>${TOK4 ? ` · <span id="tok4" title="오늘의 QR 코드 앞 4자리 (현장 확인용)">오늘 QR ${esc(TOK4)}</span>` : ""}</span>${leader && Q.list.length ? `<button data-a="reset">오늘 대기 초기화</button>` : ""}</div>
       </section>
     </main>`;
   const l = app.querySelector(".qlist"); if (l) l.scrollTop = y;
@@ -409,7 +433,7 @@ function walkOpen() {
     const b = e.target.closest("[data-w]"); if (!b) return;
     if (b.dataset.w === "no") { d.close(); return; }
     if (b.dataset.w === "ok") {
-      const n = Q.next++; Q.list.push({ n, d: "", p, at: Date.now(), st: "w", calls: 0, walk: 1 }); qSave(); pub(60000);
+      const n = Q.next++; Q.list.push({ n, d: "", p, at: Date.now(), st: "w", calls: 0, walk: 1 }); qSave(); /* 따로 안 보냄 — 다음 방송에 묻어 감 */
       const d2 = $("walkDlg");
       d2.innerHTML = `<h3>🧾 대기 번호</h3><div class="walkbig">${n}<small style="font-size:32px">번</small></div><p class="muted" style="text-align:center">${ppl(p)} · 손님께 번호를 알려 주세요</p><div class="dlgbtns"><button class="ok" data-w="no">확인</button></div>`;
       d2.onclick = e2 => { if (e2.target.closest("[data-w]")) d2.close(); };
@@ -608,7 +632,7 @@ function board() {
     $("bRecent").innerHTML = h.slice(1, 9).map(n => `<div class="${ack.includes(n) ? "ack" : ""}">${+n}</div>`).join("");
     $("bWait").innerHTML = snap.o || w ? `대기 ${w}팀<small>${snap.o ? "QR 찍고 대기 등록 · Scan to join" : "Waiting"}</small>` : `<small>대기 접수 전</small>`;
     $("bQr").hidden = !snap.o || !getKey();             // 열쇠 없는 번호판은 QR 숨김
-    if (snap.o && getKey()) todayToken().then(t => { if (!t || t === qrTok) return; qrTok = t; qrImg(guestUrl(t), 300).then(src => { if (src) { $("bQr").innerHTML = `<img src="${src}" alt="대기 등록 QR">`; $("bQr").dataset.t = t; } }); });
+    if (snap.o && getKey()) todayToken().then(t => { if (!t || t === qrTok) return; qrTok = t; qrImg(guestUrl(t), 600).then(src => { if (src) { $("bQr").innerHTML = `<img src="${src}" alt="대기 등록 QR">`; $("bQr").dataset.t = t; } }); });
     if (lastCt !== -1 && +snap.ct !== lastCt && snap.c) { const el = $("bNow"); el.classList.remove("flash"); void el.offsetWidth; el.classList.add("flash"); }
     lastCt = +snap.ct;
   };
@@ -661,7 +685,7 @@ function door() {
     if (t === qrTok && key === qrKey && box.querySelector("img")) return;
     qrTok = t; qrKey = key;
     const src = await qrImg(guestUrl(t), 720); if (t !== qrTok) return;
-    box.innerHTML = `<h1 class="dr-h">QR 찍고 <b>대기 등록하세요</b></h1><div class="dr-en">Scan to join the waiting list</div><div class="dr-code" id="dQr" data-t="${esc(t)}">${src ? `<img src="${src}" alt="오늘의 대기 등록 QR">` : "QR을 만들지 못했습니다"}</div><div class="dr-day">${kstDate(nowMs())} 오늘의 QR · 매일 자정에 바뀝니다</div>`;
+    box.innerHTML = `<h1 class="dr-h">QR 찍고 <b>대기 등록하세요</b></h1><div class="dr-en">Scan to join the waiting list</div><div class="dr-code" id="dQr" data-t="${esc(t)}">${src ? `<img src="${src}" alt="오늘의 대기 등록 QR">` : "QR을 만들지 못했습니다"}</div><div class="dr-name">${esc(SHOP.name)} 공식 대기 등록 QR</div><div class="dr-day">${kstDate(nowMs())} 오늘의 QR · 매일 자정에 바뀝니다</div>`;
   };
   snapFeed(s => { snap = s; draw(); });
   draw(); setInterval(draw, 30000);                     // 자정 지나면 새 QR
