@@ -10,6 +10,10 @@ const SHOP = fs.readdirSync(path.join(__dirname, "..", "shops")).find(f => f.end
 const results = [], errors = [];
 const ok = (name, pass, info = "") => { results.push({ name, pass: !!pass, info }); console.log(`${pass ? "통과" : "실패"} · ${name}${info ? " — " + info : ""}`); };
 const sleep = ms => new Promise(r => setTimeout(r, ms));
+const crypto = require("crypto"), DAY = 86400000, KSTO = 9 * 3600e3;
+const kstDate = ms => new Date(ms + KSTO).toISOString().slice(0, 10);
+const tok = (key, date) => crypto.createHmac("sha256", Buffer.from(key, "utf8")).update(date).digest("base64url").slice(0, 10);   // 앱과 같은 방식으로 따로 계산
+let KEY = "", TODAY = "";
 const rnd = n => [...Array(n)].map(() => "abcdefghijkmnpqrstuvwxyz23456789"[Math.floor(Math.random() * 32)]).join("");
 
 function initScript(relay) {
@@ -65,9 +69,16 @@ const txt = async (p, sel) => { try { return (await p.textContent(sel, { timeout
     await staff.click('[data-a=kind][data-k="seat"]');
 
     // ---------- 2. 줄 서기 ----------
+    ok("열쇠 없음 안내 표시", !!(await staff.$("#keyBan")));
+    await staff.click("#qOn"); await sleep(300);
+    ok("열쇠 없으면 접수 못 켬 → 설정 열림", !(await staff.isChecked("#qOn")) && await staff.evaluate(() => document.getElementById("setDlg").open));
+    await staff.click("#keyMake"); await sleep(300); await staff.click('#setDlg [data-s="close"]');
+    KEY = await staff.evaluate(c => JSON.parse(localStorage.getItem("oc_" + c + "_key") || '""'), SHOP); TODAY = tok(KEY, kstDate(Date.now()));
+    ok("열쇠 만들기 (이 기기 localStorage)", /^[A-Za-z0-9_-]{43}$/.test(KEY));
+    ok("직원 화면 구석에 오늘 QR 앞 4자리", await waitFor(async () => (await txt(staff, "#tok4")).includes(TODAY.slice(0, 4))), await txt(staff, "#tok4"));
     await staff.check("#qOn"); await sleep(400);
     ok("대기 접수 켜짐", await staff.isChecked("#qOn"));
-    const g1c = await ctxNew(browser, { width: 390, height: 844 }), g1 = await pageNew(g1c, `?s=${SHOP}&q`, "손님1");
+    const g1c = await ctxNew(browser, { width: 390, height: 844 }), g1 = await pageNew(g1c, `?s=${SHOP}&q&t=${TODAY}`, "손님1");
     await g1.waitForSelector("#gJoin", { timeout: 8000 });
     ok("손님 등록 화면 390 넘침 없음", (await overflow(g1)) <= 0);
     await g1.screenshot({ path: path.join(SHOTS, "guest_join_390.png") });
@@ -75,7 +86,7 @@ const txt = async (p, sel) => { try { return (await p.textContent(sel, { timeout
     ok("손님1 대기 번호 받음", await waitFor(async () => !!(await g1.$("#gNum"))), await txt(g1, "#gNum"));
     const n1 = parseInt(await txt(g1, "#gNum"), 10);
     ok("직원 목록에 손님1 (3명) 표시", await waitFor(async () => (await txt(staff, `[data-row="${n1}"]`)).includes("3명")));
-    const g2c = await ctxNew(browser, { width: 390, height: 844 }), g2 = await pageNew(g2c, `?s=${SHOP}&q`, "손님2");
+    const g2c = await ctxNew(browser, { width: 390, height: 844 }), g2 = await pageNew(g2c, `?s=${SHOP}&q&t=${TODAY}`, "손님2");
     await g2.waitForSelector("#gJoin"); await g2.click('#gParty [data-p="2"]'); await g2.click("#gJoin");
     ok("손님2 '앞에 1팀 · 약 N분' 표시", await waitFor(async () => /앞에 1팀 · 약 \d+분/.test(await txt(g2, "#gAhead"))), await txt(g2, "#gAhead"));
     ok("손님 대기 화면 390 넘침 없음", (await overflow(g2)) <= 0);
@@ -137,9 +148,71 @@ const txt = async (p, sel) => { try { return (await p.textContent(sel, { timeout
       ok(`번호 입력 화면 ${w}px 넘침 없음`, (await overflow(gn)) <= 0); await gn.close();
     }
     const sg = await pageNew(sc, `?s=${SHOP}&sign&noprint`, "안내판"); await sg.setViewportSize({ width: 620, height: 900 });
-    ok("QR 안내판 QR 그림", await waitFor(async () => !!(await sg.$(".qr img"))));
+    ok("종이 안내판: QR 없이 '입구 화면의 QR' 안내", await waitFor(async () => (await txt(sg, "#signDoor")).includes("입구 화면의 QR")) && !(await sg.$(".pg img")));
+    ok("종이 안내판: 결제·개인정보 안내", (await txt(sg, "#signSafe")).includes("결제·개인정보를 묻지 않습니다"));
     await sg.screenshot({ path: path.join(SHOTS, "sign_A5.png"), fullPage: true });
     await sg.setViewportSize({ width: 320, height: 700 }); ok("안내판 320px 넘침 없음", (await overflow(sg)) <= 0);
+
+    // ---------- 8. 오늘의 QR (하루 한 번 바뀌는 코드) ----------
+    await staff.setViewportSize({ width: 1280, height: 800 });
+    const guestAt = async (t, tag) => { const c = await ctxNew(browser, { width: 390, height: 844 }); return pageNew(c, `?s=${SHOP}&q${t ? "&t=" + t : ""}`, tag); };
+    const joinRes = async g => {
+      if (!(await waitFor(async () => !!(await g.$("#gJoin")), 8000))) return "등록 버튼 없음";
+      await g.click("#gJoin"); let r = "시간 초과";
+      await waitFor(async () => { if (await g.$("#gNum")) { r = "허용"; return true; } if ((await txt(g, "#gTitle")).includes("QR이 바뀌었어요")) { r = "거절"; return true; } return false; }, 15000);
+      return r;
+    };
+    const gNo = await guestAt("", "t없음");
+    ok("t 없는 주소 → 등록 버튼 대신 'QR이 바뀌었어요'", await waitFor(async () => (await txt(gNo, "#gTitle")).includes("QR이 바뀌었어요")) && !(await gNo.$("#gJoin")));
+    ok("손님 화면 맨 위 '공식 대기 화면 · 결제나 개인정보를 묻지 않습니다'", (await txt(gNo, "#gOfficial")).includes("공식 대기 화면") && (await txt(gNo, "#gOfficial")).includes("개인정보"));
+    const gBad = await guestAt("AAAAAAAAAA", "틀린t"); const rBad = await joinRes(gBad);
+    ok("틀린 t → 거절", rBad === "거절", rBad);
+    await gBad.screenshot({ path: path.join(SHOTS, "guest_rejected_390.png") });
+    await gBad.setViewportSize({ width: 320, height: 700 }); ok("거절 화면 320px 넘침 없음", (await overflow(gBad)) <= 0);
+    const kNow = Date.now() + KSTO, noonOff = Math.floor(kNow / DAY) * DAY + 12 * 3600e3 - kNow;
+    await staff.evaluate(o => { window.OC_NOW_OFFSET = o; }, noonOff);
+    const rY = await joinRes(await guestAt(tok(KEY, kstDate(Date.now() - DAY)), "어제t"));
+    ok("어제 t (낮 12시) → 거절", rY === "거절", rY);
+    const rT = await joinRes(await guestAt(TODAY, "오늘t"));
+    ok("오늘 t → 허용", rT === "허용", rT);
+    const nextMid = (Math.floor(kNow / DAY) + 1) * DAY;
+    await staff.evaluate(o => { window.OC_NOW_OFFSET = o; }, nextMid + 10 * 60000 - kNow);
+    const rM1 = await joinRes(await guestAt(TODAY, "자정10분"));
+    ok("자정 뒤 00:10 · 어제 t → 허용 (30분 유예)", rM1 === "허용", rM1);
+    await staff.evaluate(o => { window.OC_NOW_OFFSET = o; }, nextMid + 40 * 60000 - kNow);
+    const rM2 = await joinRes(await guestAt(TODAY, "자정40분"));
+    ok("자정 뒤 00:40 · 어제 t → 거절", rM2 === "거절", rM2);
+    await staff.evaluate(() => { window.OC_NOW_OFFSET = 0; });
+    // 열쇠 바꾸기
+    await staff.click("[data-a=set]"); await staff.click("#keyRegen"); await sleep(300); await staff.click('#setDlg [data-s="close"]');
+    const KEY2 = await staff.evaluate(c => JSON.parse(localStorage.getItem("oc_" + c + "_key") || '""'), SHOP), TODAY2 = tok(KEY2, kstDate(Date.now()));
+    ok("열쇠 바꾸기 → 새 열쇠", KEY2 && KEY2 !== KEY);
+    const rOld = await joinRes(await guestAt(TODAY, "옛열쇠t"));
+    ok("열쇠 바꾼 뒤 옛 token → 거절", rOld === "거절", rOld);
+    const rNew = await joinRes(await guestAt(TODAY2, "새열쇠t"));
+    ok("새 열쇠 token → 허용", rNew === "허용", rNew);
+    ok("번호판(열쇠 있음) QR = 오늘 새 token", await waitFor(async () => (await board.getAttribute("#bQr", "data-t")) === TODAY2, 40000));
+    // 기기 연결
+    const dc = await ctxNew(browser, { width: 1280, height: 800 });
+    const dr = await pageNew(dc, `?s=${SHOP}&door#pair=${KEY2}`, "입구");
+    ok("기기 연결: #pair 저장 후 주소에서 지워짐", await waitFor(async () => (await dr.evaluate(() => location.hash)) === "" && (await dr.evaluate(c => JSON.parse(localStorage.getItem("oc_" + c + "_key") || '""'), SHOP)) === KEY2));
+    ok("입구 화면: 오늘의 QR (token 일치)", await waitFor(async () => (await dr.getAttribute("#dQr", "data-t")) === TODAY2 && !!(await dr.$("#dQr img")), 10000));
+    ok("입구 화면: 지금 호출 · 대기 N팀", /\d/.test(await txt(dr, "#dNum")) && (await txt(dr, "#dWait")).includes("대기"));
+    ok("입구 화면 1280x800 넘침 없음", (await overflow(dr)) <= 0);
+    await sleep(3800); await dr.screenshot({ path: path.join(SHOTS, "door_1280x800.png") });
+    await dr.setViewportSize({ width: 800, height: 1280 }); await sleep(500);
+    ok("입구 화면 800x1280 넘침 없음", (await overflow(dr)) <= 0);
+    ok("입구 화면 세로: 대기·안내가 화면 안에", await dr.evaluate(() => ["dWait", "dQr"].every(id => document.getElementById(id).getBoundingClientRect().bottom <= innerHeight) && document.querySelector(".dr-safe").getBoundingClientRect().bottom <= innerHeight));
+    await dr.screenshot({ path: path.join(SHOTS, "door_800x1280.png") });
+    const nk = await ctxNew(browser, { width: 1280, height: 800 });
+    const drNo = await pageNew(nk, `?s=${SHOP}&door`, "입구-열쇠없음");
+    ok("입구 화면 열쇠 없음 → '기기 연결 QR을 찍어 주세요'", await waitFor(async () => (await txt(drNo, "#dTitle")).includes("기기 연결 QR")));
+    const bdNo = await pageNew(nk, `?s=${SHOP}&board`, "번호판-열쇠없음"); await sleep(2500);
+    ok("열쇠 없는 번호판 → QR 숨김", await bdNo.evaluate(() => document.getElementById("bQr").hidden));
+    const gGuestPair = await pageNew(nk, `?s=${SHOP}&q#pair=${KEY2}`, "손님-pair");
+    ok("손님 화면은 #pair 저장 안 함 (주소에서만 지움)", await waitFor(async () => (await gGuestPair.evaluate(() => location.hash)) === "") && !(await gGuestPair.evaluate(c => localStorage.getItem("oc_" + c + "_key"), SHOP)));
+    await staff.click("#qOn"); await sleep(300);
+    ok("접수 중지 → 입구 화면 '지금은 대기 등록을 받지 않아요'", await waitFor(async () => (await txt(dr, "#dTitle")).includes("받지 않아요"), 10000));
 
     // ---------- 7. 실제 ntfy.sh (2건만) ----------
     if (process.argv.includes("--real")) {
