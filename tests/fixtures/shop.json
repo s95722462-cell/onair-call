@@ -1,0 +1,54 @@
+{
+  "name": "시험 식당",
+  "logo": "",
+  "logoText": "시",
+  "color": "#e0662b",
+  "langs": [
+    "ko",
+    "en"
+  ],
+  "langsAvailable": [
+    "ko",
+    "en",
+    "ja",
+    "zh"
+  ],
+  "voices": {
+    "ko": "SunHi",
+    "en": "Ava",
+    "ja": "Nanami",
+    "zh": "Xiaoxiao"
+  },
+  "minutesPerTeam": 6,
+  "expires": "2026-12-31",
+  "messages": {
+    "seat": {
+      "label": "자리 준비",
+      "icon": "🍽",
+      "screen": "자리가 준비되었어요",
+      "screenEn": "Your table is ready",
+      "go": "입구로 와 주세요",
+      "goEn": "Please come to the entrance",
+      "say": {
+        "ko": "{n}번 손님, 자리가 준비되었습니다. 입구로 와 주세요.",
+        "en": "Number {n}, your table is ready. Please come to the entrance.",
+        "ja": "{n}番のお客様、お席の準備ができました。入口までお越しください。",
+        "zh": "{n}号顾客，您的座位已准备好，请到入口。"
+      }
+    },
+    "take": {
+      "label": "포장",
+      "icon": "🥡",
+      "screen": "포장이 준비되었어요",
+      "screenEn": "Your takeout is ready",
+      "go": "카운터로 와 주세요",
+      "goEn": "Please come to the counter",
+      "say": {
+        "ko": "{n}번 손님, 포장 주문이 준비되었습니다. 카운터로 와 주세요.",
+        "en": "Number {n}, your takeout order is ready. Please come to the counter.",
+        "ja": "{n}番のお客様、お持ち帰りの品ができました。カウンターまでお越しください。",
+        "zh": "{n}号顾客，您的外带餐品已准备好，请到柜台取餐。"
+      }
+    }
+  }
+}
