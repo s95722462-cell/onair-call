@@ -414,7 +414,7 @@ function render() {
         <div class="numrow"><button class="pm" data-a="minus" aria-label="번호 1 빼기">−</button><div class="bignum" id="curNum">${S.num || "–"}<small>번</small></div><button class="pm" data-a="plus" aria-label="번호 1 더하기">+</button></div>
         <div class="kinds">${kinds.map(k => `<button class="chip${k === S.kind ? " on" : ""}" data-a="kind" data-k="${esc(k)}">${esc((SHOP.messages[k].icon || "") + " " + (SHOP.messages[k].label || k))}</button>`).join("")}</div>
         <div class="pad">${["1", "2", "3", "4", "5", "6", "7", "8", "9", "C", "0", "⌫"].map(k => `<button data-a="pad" data-k="${k}">${k}</button>`).join("")}</div>
-        <div class="callbtns"><button class="callbtn${calling && +S.num === +Q.cur ? " busy" : ""}" id="callBtn" data-a="call"${canCall() ? "" : " disabled"}>${calling && +S.num === +Q.cur ? "■ 멈춤" : "📢 호출"}</button><button class="againbtn" id="againBtn" data-a="again"${canCall() && (Q.cur || S.num) ? "" : " disabled"}>다시 부르기${Q.cur ? `<br><small>${Q.cur}번</small>` : ""}</button></div>
+        <div class="callbtns"><button class="callbtn${calling && +S.num === +Q.cur ? " busy" : ""}" id="callBtn" data-a="call"${canCall() ? "" : " disabled"}>${calling && +S.num === +Q.cur ? "■ 멈춤" : "📢 번호 호출"}</button><button class="againbtn" id="againBtn" data-a="again"${canCall() && (Q.cur || S.num) ? "" : " disabled"}>다시 부르기${Q.cur ? `<br><small>${Q.cur}번</small>` : ""}</button></div>
         <div class="sayline" id="sayLine">${S.langs.map(l => LANGS[l].name).join(" · ")} · ${S.rep}번 반복</div>
       </section>
       <section class="card" aria-label="대기 줄">

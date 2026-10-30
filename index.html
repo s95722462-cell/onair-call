@@ -51,8 +51,8 @@ input,select{font:inherit;font-size:16px;color:var(--text);background:var(--pane
 .pad{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:8px}
 .pad button{height:58px;font-size:26px;font-weight:700}
 .callbtns{display:grid;grid-template-columns:2fr 1fr;gap:8px;margin-top:10px}
-.callbtn{height:84px;font-size:28px;font-weight:900;background:var(--accent);color:var(--accent-ink);border-radius:18px}
-.callbtn.busy{background:var(--bad)}
+.callbtn{height:84px;font-size:24px;font-weight:800;background:var(--panel2);color:var(--text);border:2px solid var(--line);border-radius:18px}   /* 보조: 번호 직접 부르기 (주 버튼은 오른쪽 다음 손님) */
+.callbtn.busy{background:var(--bad);border-color:var(--bad);color:#fff}
 .againbtn{height:84px;font-size:19px;font-weight:700;border-radius:18px}
 .sayline{margin-top:10px;font-size:14px;color:var(--muted);min-height:20px;text-align:center;word-break:keep-all}
 .qhead{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
@@ -62,7 +62,9 @@ input,select{font:inherit;font-size:16px;color:var(--text);background:var(--pane
 .sw input::after{content:"";position:absolute;top:3px;left:3px;width:24px;height:24px;border-radius:50%;background:#fff;transition:.2s}
 .sw input:checked{background:var(--ok)}
 .sw input:checked::after{left:25px}
-.qnext{width:100%;height:64px;margin-top:12px;font-size:22px;font-weight:800;background:color-mix(in srgb,var(--accent) 30%,var(--panel2));border-radius:16px}
+.qnext{width:100%;height:96px;margin-top:12px;font-size:30px;font-weight:900;background:var(--accent);color:var(--accent-ink);border-radius:18px;box-shadow:0 6px 18px color-mix(in srgb,var(--accent) 35%,transparent)}   /* 주 버튼 */
+.qnext b{font-size:36px}
+.qnext:disabled{background:var(--panel2);color:inherit;box-shadow:none}
 .qtools{display:flex;gap:8px;margin-top:8px;flex-wrap:wrap}
 .qtools button{flex:1;font-size:15px}
 .qlist{margin-top:12px;display:flex;flex-direction:column;gap:8px;max-height:420px;overflow:auto}
@@ -100,7 +102,7 @@ dialog h3{margin:0 0 12px;font-size:20px}
 @media (max-width:480px){
   .st-top{padding:10px 12px}.st-main{padding:12px;gap:12px}.card{padding:12px}
   .numrow .pm{width:60px;height:60px;font-size:28px}.bignum{font-size:64px}
-  .callbtn,.againbtn{height:70px}.callbtn{font-size:22px}.againbtn{font-size:15px}
+  .callbtn,.againbtn{height:70px}.callbtn{font-size:20px}.againbtn{font-size:15px}.qnext{height:80px;font-size:24px}.qnext b{font-size:28px}
   .st-top .tools{width:100%}.st-top .tools button{flex:1;padding:0 6px;font-size:14px}
 }
 
