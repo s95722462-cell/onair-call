@@ -103,12 +103,14 @@ const txt = async (p, sel) => { try { return (await p.textContent(sel, { timeout
     await staff.click(`[data-a=in][data-n="${n1}"]`);
     const n2 = parseInt(await txt(g2, "#gNum"), 10), nMsg0 = relay.msgs.length;
     await sleep(1500); ok("입장은 따로 방송 안 함 (다음 방송에 묻어 감)", relay.msgs.length === nMsg0);
+    ok("입장 → 번호판에 다음 손님 번호 자동 준비", parseInt(await txt(staff, "#curNum"), 10) === n2, await txt(staff, "#curNum"));
     await staff.click(`[data-a=qcall][data-n="${n2}"]`);
     ok("다음 호출 방송에 묻어 → 손님1 '입장했어요'", await waitFor(async () => (await txt(g1, "#gTitle")).includes("입장")));
     await sleep(500);
     await staff.click(`[data-a=no][data-n="${n2}"]`);
     await staff.click("[data-a=walk]"); await staff.click('#walkDlg [data-p="4"]'); await staff.click('#walkDlg [data-w="ok"]');
-    ok("직접 등록 → 번호 표시", /\d+/.test(await txt(staff, "#walkDlg .walkbig"))); await staff.click('#walkDlg [data-w="no"]');
+    ok("직접 등록 → 번호 표시", /\d+/.test(await txt(staff, "#walkDlg .walkbig"))); const nWalk = parseInt(await txt(staff, "#walkDlg .walkbig"), 10); await staff.click('#walkDlg [data-w="no"]');
+    ok("노쇼 뒤 기다리는 손님 없음 → 새로 등록한 손님이 번호판에 준비", parseInt(await txt(staff, "#curNum"), 10) === nWalk, await txt(staff, "#curNum"));
 
     // ---------- 3. 번호로 기다리기 (영수증 번호) ----------
     const g3c = await ctxNew(browser, { width: 390, height: 844 }), g3 = await pageNew(g3c, `?s=${SHOP}&n=77`, "손님3");

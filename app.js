@@ -273,7 +273,7 @@ function onIn(d) {
       if (!good) { Q.rj = [{ k: dev.slice(0, 6) + ":" + String(p[3] || "").replace(/[^a-z0-9]/g, "").slice(0, 6), at: Date.now() }, ...(Q.rj || [])].slice(0, 10); ls.set("queue", Q); pub(REG_DELAY); return; }
       if (Q.list.some(e => e.d === dev && isAct(e))) return;
       const n = Q.next++; Q.list.push({ n, d: dev, p: party, at: t ? Math.min(Date.now(), t * 1000) : Date.now(), st: "w", calls: 0 });
-      qSave(); pub(REG_DELAY); toast(`🧾 ${n}번 대기 등록 · ${ppl(party)}`);
+      readyNext(true); qSave(); pub(REG_DELAY); toast(`🧾 ${n}번 대기 등록 · ${ppl(party)}`);   // 기다리는 사람이 없던 중이면 번호판에 바로 준비
     });
   } else if (p[0] === "G" || p[0] === "X") {
     const n = parseInt(p[2], 10), e = Q.list.find(x => x.n === n && x.d === dev);
@@ -352,6 +352,14 @@ function padKey(k) {
   if (k === "⌫") s = s.slice(0, -1); else if (k === "C") s = ""; else s = (s + k).replace(/^0+/, "").slice(0, 4);
   padFresh = false; S.num = +s || 0; saveS(); render();
 }
+// 다음 손님 준비 (2026-10-30 사장님 요청): 입장·노쇼 처리하면 번호판에 다음 대기 번호를 미리 띄워 둠 → 📢 호출만 누르면 됨
+// 패드에 지금 띄운 번호가 아직 기다리거나 부르는 중인 손님이면 건드리지 않음 (직원이 고른 번호 존중)
+function readyNext(quiet) {
+  if (Q.list.some(x => x.n === +S.num && isAct(x))) return;
+  const w = Q.list.filter(x => x.st === "w").sort((x, y) => x.n - y.n)[0]; if (!w) return;
+  S.num = w.n; padFresh = true; saveS();
+  if (!quiet) toast(`👉 다음 손님 ${w.n}번 준비 — 📢 호출을 누르세요`);
+}
 function step(d) { S.num = Math.max(1, Math.min(9999, (+S.num || 0) + d)); padFresh = true; saveS(); render(); }
 function toggleQ(on) {
   if (!leader) return;
@@ -380,9 +388,9 @@ function onStaffClick(e) {
   else if (a === "reset") { if (!leader || !confirm("오늘 대기를 모두 지우고 1번부터 다시 시작할까요?")) return; Object.assign(Q, { r: rnd(4), day: today(), next: 1, cur: 0, list: [], h: [], ack: [] }); qSave(); pub(); toast("대기를 초기화했습니다 — 다음 등록은 1번"); }
   else if (!leader || !ent) return;
   else if (a === "qcall") { padFresh = true; callNumber(ent.n); }
-  else if (a === "in") { ent.st = "i"; ent.doneAt = Date.now(); qSave(); /* 따로 안 보냄 — 다음 방송에 묻어 감 */ }
-  else if (a === "no") { ent.st = "n"; ent.doneAt = Date.now(); qSave(); /* 따로 안 보냄 — 다음 방송에 묻어 감 */ toast(`${ent.n}번 노쇼 처리 — 목록 아래 '지난 손님'에 있어요`); }
-  else if (a === "del") { if (!confirm(`${ent.n}번 대기를 취소할까요?`)) return; ent.st = "x"; ent.doneAt = Date.now(); qSave(); /* 따로 안 보냄 — 다음 방송에 묻어 감 */ }
+  else if (a === "in") { if (calling && +Q.cur === ent.n) stopCall(); ent.st = "i"; ent.doneAt = Date.now(); readyNext(); qSave(); /* 따로 안 보냄 — 다음 방송에 묻어 감 */ }
+  else if (a === "no") { if (calling && +Q.cur === ent.n) stopCall(); ent.st = "n"; ent.doneAt = Date.now(); readyNext(true); qSave(); /* 따로 안 보냄 — 다음 방송에 묻어 감 */ toast(`${ent.n}번 노쇼 처리 — 목록 아래 '지난 손님'에 있어요` + (+S.num !== ent.n && Q.list.some(x => x.n === +S.num && x.st === "w") ? ` · 다음 ${S.num}번 준비` : "")); }
+  else if (a === "del") { if (!confirm(`${ent.n}번 대기를 취소할까요?`)) return; ent.st = "x"; ent.doneAt = Date.now(); readyNext(true); qSave(); /* 따로 안 보냄 — 다음 방송에 묻어 감 */ }
 }
 function rowHTML(e) {
   const now = Date.now(), min = Math.max(0, Math.round(((e.c1 || (isAct(e) ? now : e.doneAt || now)) - e.at) / 60000));
@@ -433,7 +441,7 @@ function walkOpen() {
     const b = e.target.closest("[data-w]"); if (!b) return;
     if (b.dataset.w === "no") { d.close(); return; }
     if (b.dataset.w === "ok") {
-      const n = Q.next++; Q.list.push({ n, d: "", p, at: Date.now(), st: "w", calls: 0, walk: 1 }); qSave(); /* 따로 안 보냄 — 다음 방송에 묻어 감 */
+      const n = Q.next++; Q.list.push({ n, d: "", p, at: Date.now(), st: "w", calls: 0, walk: 1 }); readyNext(true); qSave(); /* 따로 안 보냄 — 다음 방송에 묻어 감 */
       const d2 = $("walkDlg");
       d2.innerHTML = `<h3>🧾 대기 번호</h3><div class="walkbig">${n}<small style="font-size:32px">번</small></div><p class="muted" style="text-align:center">${ppl(p)} · 손님께 번호를 알려 주세요</p><div class="dlgbtns"><button class="ok" data-w="no">확인</button></div>`;
       d2.onclick = e2 => { if (e2.target.closest("[data-w]")) d2.close(); };
