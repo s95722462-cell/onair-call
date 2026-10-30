@@ -172,7 +172,7 @@ let S = {};          // 직원 기기 설정 (언어·목소리·반복·차임)
   document.documentElement.style.setProperty("--accent", SHOP.color);
   SUB = await checkSubscription(SHOP);
   if ("serviceWorker" in navigator && location.protocol !== "file:") navigator.serviceWorker.register("sw.js").catch(() => {});
-  if (MODE === "staff") staff(); else if (MODE === "guest") guest(); else if (MODE === "board") board(); else if (MODE === "door") door(); else sign();
+  if (MODE === "staff") { document.body.classList.add("staff"); staff(); } else if (MODE === "guest") guest(); else if (MODE === "board") board(); else if (MODE === "door") door(); else sign();
   if (PAIRED) toast("🔗 기기 연결 완료 — 오늘의 QR을 쓸 수 있습니다", 3500);
 })();
 
@@ -396,7 +396,7 @@ function rowHTML(e) {
   const now = Date.now(), min = Math.max(0, Math.round(((e.c1 || (isAct(e) ? now : e.doneAt || now)) - e.at) / 60000));
   const btn = !leader ? "" : e.st === "w" ? `<button data-a="qcall" data-n="${e.n}"${canCall() ? "" : " disabled"}>📢 호출</button><button class="del" data-a="del" data-n="${e.n}">취소</button>`
     : "cg".includes(e.st) ? `<button data-a="qcall" data-n="${e.n}"${canCall() ? "" : " disabled"}>다시</button><button class="in" data-a="in" data-n="${e.n}">입장</button><button class="del" data-a="no" data-n="${e.n}">노쇼</button>` : "";
-  return `<div class="qrow ${e.st}" data-row="${e.n}"><div class="qn">${e.n}</div><div class="qm"><span class="qst ${e.st}">${ST[e.st]}${e.st === "c" && e.calls > 1 ? " " + e.calls : ""}</span><b>${ppl(e.p)}</b> · ${hm(e.at)} 등록${e.walk ? " · 직접" : ""} · ${min}분</div>${btn ? `<div class="qa">${btn}</div>` : ""}</div>`;
+  return `<div class="qrow ${e.st}" data-row="${e.n}"><div class="qn">${e.n}</div><div class="qm"><div class="qm1"><span class="qst ${e.st}">${ST[e.st]}${e.st === "c" && e.calls > 1 ? " " + e.calls : ""}</span><b>${ppl(e.p)}</b></div><div class="qm2">${hm(e.at)} 등록${e.walk ? " · 직접" : ""} · ${min}분</div></div>${btn ? `<div class="qa">${btn}</div>` : ""}</div>`;
 }
 function render() {
   if (MODE !== "staff" || !Q) return;
@@ -406,25 +406,34 @@ function render() {
     : SUB.state === "grace" ? `<div class="banner warn" id="subBan">⚠️ 이용 기간이 끝났습니다 (${esc(SUB.expires)}). ${SUB.graceLeft}일 뒤 호출이 멈춥니다 — 연장해 주세요.${SUPPORT ? " 문의 " + esc(SUPPORT) : ""}</div>`
     : SUB.state === "soon" ? `<div class="banner warn" id="subBan">이용 기간이 ${SUB.daysLeft ? SUB.daysLeft + "일 " : "오늘까지 "}남았습니다 (${esc(SUB.expires)}까지).</div>` : "";
   const sent = sentN();
-  app.innerHTML = `<header class="st-top">${logoHTML()}<div class="nm">${esc(SHOP.name)} <span class="muted" style="font-size:15px;font-weight:600">호출</span></div>
-    <div class="tools"><button data-a="door">🚪 QR 입구 화면</button><button data-a="board">🖥 번호판</button><button data-a="pair">🔗 기기 연결</button><button data-a="sign">🪧 안내판</button><button data-a="set" aria-label="설정">⚙ 설정</button></div></header>
+  const curE = Q.cur ? Q.list.find(e => e.n === +Q.cur) : null, w0 = w[0], mins = e => Math.max(0, Math.round((Date.now() - e.at) / 60000));
+  const nowSub = curE ? `${ST[curE.st]} · ${ppl(curE.p)}${curE.st === "c" && curE.calls > 1 ? ` · ${curE.calls}번째 호출` : ""}` : Q.cur ? "번호로 부름" : "아직 부른 번호가 없어요";
+  app.innerHTML = `<header class="st-top">${logoHTML()}<div class="nm">${esc(SHOP.name)}<span class="nm-sub">호출 · 대기</span></div>
+    <span class="live${Q.on ? " on" : ""}"><i></i>${Q.on ? "접수 중" : "접수 꺼짐"}</span>
+    <div class="tools"><button data-a="door"><span>🚪</span>QR 입구 화면</button><button data-a="board"><span>🖥</span>번호판</button><button data-a="pair"><span>🔗</span>기기 연결</button><button data-a="sign"><span>🪧</span>안내판</button><button data-a="set" aria-label="설정"><span>⚙</span>설정</button></div></header>
     ${sub}${getKey() ? "" : `<div class="banner warn" id="keyBan">🔑 QR 열쇠가 없습니다 — <b>⚙ 설정</b>에서 만들어 주세요. 열쇠가 없으면 손님 대기 등록이 거절됩니다.</div>`}${navigator.onLine ? "" : `<div class="banner warn">📶 인터넷 끊김 — 스피커 호출은 기기 목소리로 됩니다. 휴대폰 알림·줄 서기는 다시 연결되면 이어집니다.</div>`}
     <main class="st-main">
-      <section class="card" aria-label="번호 호출">
-        <div class="numrow"><button class="pm" data-a="minus" aria-label="번호 1 빼기">−</button><div class="bignum" id="curNum">${S.num || "–"}<small>번</small></div><button class="pm" data-a="plus" aria-label="번호 1 더하기">+</button></div>
-        <div class="kinds">${kinds.map(k => `<button class="chip${k === S.kind ? " on" : ""}" data-a="kind" data-k="${esc(k)}">${esc((SHOP.messages[k].icon || "") + " " + (SHOP.messages[k].label || k))}</button>`).join("")}</div>
-        <div class="pad">${["1", "2", "3", "4", "5", "6", "7", "8", "9", "C", "0", "⌫"].map(k => `<button data-a="pad" data-k="${k}">${k}</button>`).join("")}</div>
-        <div class="callbtns"><button class="callbtn${calling && +S.num === +Q.cur ? " busy" : ""}" id="callBtn" data-a="call"${canCall() ? "" : " disabled"}>${calling && +S.num === +Q.cur ? "■ 멈춤" : "📢 번호 호출"}</button><button class="againbtn" id="againBtn" data-a="again"${canCall() && (Q.cur || S.num) ? "" : " disabled"}>다시 부르기${Q.cur ? `<br><small>${Q.cur}번</small>` : ""}</button></div>
-        <div class="sayline" id="sayLine">${S.langs.map(l => LANGS[l].name).join(" · ")} · ${S.rep}번 반복</div>
-      </section>
-      <section class="card" aria-label="대기 줄">
-        <div class="qhead"><h2>🧾 대기 <span id="waitN">${w.length}</span>팀</h2><label class="sw"><input type="checkbox" id="qOn"${Q.on ? " checked" : ""}${leader && canCall() ? "" : " disabled"}>${Q.on ? "접수 중" : "접수 꺼짐"}</label></div>
-        ${!leader ? `<div class="banner warn" style="margin:10px 0 0">다른 창에서 이 가게 호출을 맡고 있습니다. 그 창에서 써 주세요.</div>` : !Q.on && !act.length ? `<p class="muted" style="font-size:15px;line-height:1.5">켜면 손님이 <b>카운터 QR</b>로 인원만 골라 번호를 받습니다. 이 화면을 켜 둔 동안 등록돼요.</p>` : ""}
-        ${fail ? `<div class="banner warn" style="margin:10px 0 0">📶 손님 휴대폰에 다시 보내는 중… (${fail})</div>` : ""}
-        ${leader ? `<button class="qnext" data-a="next"${w.length && canCall() ? "" : " disabled"}>📢 다음 손님${w.length ? ` <b>${w[0].n}번</b>` : ""}</button><div class="qtools"><button data-a="walk"${canCall() ? "" : " disabled"}>＋ 직접 등록 (휴대폰 없는 손님)</button></div>` : ""}
-        <div class="qlist" id="qList">${act.length ? act.map(rowHTML).join("") : `<div class="qempty">기다리는 손님이 없습니다</div>`}</div>
+      <section class="card queue" aria-label="대기 줄">
+        <div class="hero">
+          <div class="now"><span class="lbl">지금 호출</span><div class="now-n">${Q.cur ? `${Q.cur}<small>번</small>` : "–"}</div><span class="now-s">${nowSub}</span></div>
+          <div class="stats"><div><b id="waitN">${w.length}</b><span>대기 팀</span></div><div><b>${w.length ? "약 " + w.length * pace() : 0}<small>분</small></b><span>예상 대기</span></div><div><b>${Q.list.length}</b><span>오늘 손님</span></div></div>
+        </div>
+        ${!leader ? `<div class="banner warn" style="margin:12px 0 0">다른 창에서 이 가게 호출을 맡고 있습니다. 그 창에서 써 주세요.</div>` : ""}
+        ${fail ? `<div class="banner warn" style="margin:12px 0 0">📶 손님 휴대폰에 다시 보내는 중… (${fail})</div>` : ""}
+        ${leader ? `<button class="qnext" data-a="next"${w.length && canCall() ? "" : " disabled"}><span class="qn-ic">📢</span><span class="qn-t">다음 손님 호출<small>${w0 ? `${ppl(w0.p)} · ${mins(w0)}분 기다림` : "기다리는 손님이 없어요"}</small></span>${w0 ? `<b>${w0.n}<small>번</small></b>` : ""}</button>` : ""}
+        <div class="qhead"><h2>대기 줄</h2>${leader ? `<button class="walkbtn" data-a="walk"${canCall() ? "" : " disabled"}>＋ 직접 등록</button>` : ""}<label class="sw"><input type="checkbox" id="qOn"${Q.on ? " checked" : ""}${leader && canCall() ? "" : " disabled"}>${Q.on ? "접수 중" : "접수 꺼짐"}</label></div>
+        ${leader && !Q.on && !act.length ? `<p class="hint">켜면 손님이 <b>입구 QR</b>로 인원만 골라 번호를 받습니다. 이 화면을 켜 둔 동안 등록돼요.</p>` : ""}
+        <div class="qlist" id="qList">${act.length ? act.map(rowHTML).join("") : `<div class="qempty"><span>🍽</span>기다리는 손님이 없습니다</div>`}</div>
         ${done.length ? `<details class="done"${doneOpen ? " open" : ""}><summary>지난 손님 ${done.length}팀</summary><div class="qlist">${done.map(rowHTML).join("")}</div></details>` : ""}
-        <div class="qfoot"><span>오늘 ${Q.list.length}팀 · 휴대폰 알림 ${sent}/${DAILY_LIMIT}건${sent >= 200 ? " ⚠️" : ""} · <span id="teamsLeft">남은 약 ${teamsLeft(sent)}팀</span>${TOK4 ? ` · <span id="tok4" title="오늘의 QR 코드 앞 4자리 (현장 확인용)">오늘 QR ${esc(TOK4)}</span>` : ""}</span>${leader && Q.list.length ? `<button data-a="reset">오늘 대기 초기화</button>` : ""}</div>
+        <div class="qfoot"><span>휴대폰 알림 ${sent}/${DAILY_LIMIT}건${sent >= 200 ? " ⚠️" : ""} · <span id="teamsLeft">남은 약 ${teamsLeft(sent)}팀</span>${TOK4 ? ` · <span id="tok4" title="오늘의 QR 코드 앞 4자리 (현장 확인용)">오늘 QR ${esc(TOK4)}</span>` : ""}</span>${leader && Q.list.length ? `<button data-a="reset">오늘 대기 초기화</button>` : ""}</div>
+      </section>
+      <section class="card manual" aria-label="번호 호출">
+        <div class="mhead"><h2>번호로 직접 부르기</h2><span>순서 건너뛰기 · 포장</span></div>
+        <div class="screen"><div class="numrow"><button class="pm" data-a="minus" aria-label="번호 1 빼기">−</button><div class="bignum" id="curNum">${S.num || "–"}<small>번</small></div><button class="pm" data-a="plus" aria-label="번호 1 더하기">+</button></div>
+        <div class="kinds">${kinds.map(k => `<button class="chip${k === S.kind ? " on" : ""}" data-a="kind" data-k="${esc(k)}">${esc((SHOP.messages[k].icon || "") + " " + (SHOP.messages[k].label || k))}</button>`).join("")}</div></div>
+        <div class="pad">${["1", "2", "3", "4", "5", "6", "7", "8", "9", "C", "0", "⌫"].map(k => `<button data-a="pad" data-k="${k}"${/\d/.test(k) ? "" : ` class="fn"`}>${k}</button>`).join("")}</div>
+        <div class="callbtns"><button class="callbtn${calling && +S.num === +Q.cur ? " busy" : ""}" id="callBtn" data-a="call"${canCall() ? "" : " disabled"}>${calling && +S.num === +Q.cur ? "■ 멈춤" : "📢 번호 호출"}</button><button class="againbtn" id="againBtn" data-a="again"${canCall() && (Q.cur || S.num) ? "" : " disabled"}>↻ 다시 부르기${Q.cur ? `<small>${Q.cur}번</small>` : ""}</button></div>
+        <div class="sayline" id="sayLine">🔊 ${S.langs.map(l => LANGS[l].name).join(" · ")} · ${S.rep}번 반복</div>
       </section>
     </main>`;
   const l = app.querySelector(".qlist"); if (l) l.scrollTop = y;
