@@ -407,7 +407,7 @@ function render() {
     : SUB.state === "soon" ? `<div class="banner warn" id="subBan">이용 기간이 ${SUB.daysLeft ? SUB.daysLeft + "일 " : "오늘까지 "}남았습니다 (${esc(SUB.expires)}까지).</div>` : "";
   const sent = sentN();
   app.innerHTML = `<header class="st-top">${logoHTML()}<div class="nm">${esc(SHOP.name)} <span class="muted" style="font-size:15px;font-weight:600">호출</span></div>
-    <div class="tools"><button data-a="door">🚪 입구 화면</button><button data-a="board">🖥 번호판</button><button data-a="pair">🔗 기기 연결</button><button data-a="sign">🪧 안내판</button><button data-a="set" aria-label="설정">⚙ 설정</button></div></header>
+    <div class="tools"><button data-a="door">🚪 QR 입구 화면</button><button data-a="board">🖥 번호판</button><button data-a="pair">🔗 기기 연결</button><button data-a="sign">🪧 안내판</button><button data-a="set" aria-label="설정">⚙ 설정</button></div></header>
     ${sub}${getKey() ? "" : `<div class="banner warn" id="keyBan">🔑 QR 열쇠가 없습니다 — <b>⚙ 설정</b>에서 만들어 주세요. 열쇠가 없으면 손님 대기 등록이 거절됩니다.</div>`}${navigator.onLine ? "" : `<div class="banner warn">📶 인터넷 끊김 — 스피커 호출은 기기 목소리로 됩니다. 휴대폰 알림·줄 서기는 다시 연결되면 이어집니다.</div>`}
     <main class="st-main">
       <section class="card" aria-label="번호 호출">
